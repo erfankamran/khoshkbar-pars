@@ -1,0 +1,209 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+/* ============================================================
+   PARS Design System — فاز ۲
+   سبز تیره برند: brand-900/950 | زمردی دکمه‌ها: brand-500
+   کرم پس‌زمینه: cream-* | طلایی تأکیدی: gold-*
+   کارت سفید: card | خاکستری ملایم متن ثانویه: ink-*
+   ============================================================ */
+@theme {
+  /* سبز برند */
+  --color-brand-50: #eef7f2;
+  --color-brand-100: #d7ecdf;
+  --color-brand-200: #aed9c0;
+  --color-brand-300: #7cbf9d;
+  --color-brand-400: #48a477;
+  --color-brand-500: #1f8f5a;
+  --color-brand-600: #17754b;
+  --color-brand-700: #135d3d;
+  --color-brand-800: #104831;
+  --color-brand-900: #0d3a27;
+  --color-brand-950: #06241a;
+
+  /* کرم روشن */
+  --color-cream-50: #fbf9f3;
+  --color-cream-100: #f6f1e5;
+  --color-cream-200: #ece4d1;
+  --color-cream-300: #ddd1b3;
+  --color-cream-400: #c9b98f;
+
+  /* طلایی ملایم — فقط برای تأکید و تخفیف */
+  --color-gold-100: #f8efd6;
+  --color-gold-200: #f0e0ab;
+  --color-gold-300: #e5cc7c;
+  --color-gold-400: #d9b352;
+  --color-gold-500: #c89b34;
+  --color-gold-600: #a67d26;
+  --color-gold-700: #83611f;
+
+  /* خاکستری ملایم گرم */
+  --color-ink-100: #f1f2ef;
+  --color-ink-200: #e2e4df;
+  --color-ink-300: #c6c9c1;
+  --color-ink-400: #9aa096;
+  --color-ink-500: #757b70;
+  --color-ink-600: #565c53;
+  --color-ink-700: #3d423b;
+  --color-ink-800: #2a2e28;
+  --color-ink-900: #1c1f1a;
+
+  /* سایه‌های ملایم برند */
+  --shadow-card: 0 1px 2px rgb(13 58 39 / 0.05), 0 4px 16px rgb(13 58 39 / 0.06);
+  --shadow-float: 0 8px 40px rgb(6 36 26 / 0.18);
+
+  --animate-float: pars-float 5s ease-in-out infinite;
+
+  @keyframes pars-float {
+    0%,
+    100% {
+      transform: translateY(0);
+    }
+    50% {
+      transform: translateY(-12px);
+    }
+  }
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-vazirmatn);
+  --font-mono: ui-monospace, monospace;
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+:root {
+  --radius: 0.875rem;
+  --background: #fbf9f3;
+  --foreground: #1c1f1a;
+  --card: #ffffff;
+  --card-foreground: #1c1f1a;
+  --popover: #ffffff;
+  --popover-foreground: #1c1f1a;
+  --primary: #1f8f5a;
+  --primary-foreground: #ffffff;
+  --secondary: #f6f1e5;
+  --secondary-foreground: #135d3d;
+  --muted: #f6f1e5;
+  --muted-foreground: #757b70;
+  --accent: #f8efd6;
+  --accent-foreground: #135d3d;
+  --destructive: #dc2626;
+  --border: #ece4d1;
+  --input: #ece4d1;
+  --ring: #7cbf9d;
+  --chart-1: #1f8f5a;
+  --chart-2: #c89b34;
+  --chart-3: #0d3a27;
+  --chart-4: #48a477;
+  --chart-5: #ddd1b3;
+  --sidebar: #ffffff;
+  --sidebar-foreground: #1c1f1a;
+  --sidebar-primary: #1f8f5a;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #f6f1e5;
+  --sidebar-accent-foreground: #135d3d;
+  --sidebar-border: #ece4d1;
+  --sidebar-ring: #7cbf9d;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    -webkit-tap-highlight-color: transparent;
+  }
+  body {
+    @apply text-foreground;
+    font-family: var(--font-vazirmatn), ui-sans-serif, system-ui, sans-serif;
+    /* پس‌زمینه ظریف و هماهنگ با برند — در نمایشگرهای بزرگ اطراف قاب موبایل دیده می‌شود */
+    background-color: #efe9da;
+    background-image:
+      radial-gradient(900px 480px at 88% -8%, rgb(31 143 90 / 0.1), transparent 60%),
+      radial-gradient(760px 420px at 8% 108%, rgb(200 155 52 / 0.1), transparent 60%);
+    background-attachment: fixed;
+  }
+  ::selection {
+    background: var(--color-gold-200);
+  }
+}
+
+@layer utilities {
+  /* اسکرول افقی بدون نمایش اسکرول‌بار (تجربه اپلیکیشنی) */
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  /* پشتیبانی Safe Area موبایل */
+  .pt-safe {
+    padding-top: env(safe-area-inset-top);
+  }
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  /* اسکلتون با Shimmer ملایم — بدون کتابخانه سنگین */
+  .shimmer {
+    position: relative;
+    overflow: hidden;
+    background-color: var(--color-cream-200);
+  }
+  .shimmer::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    transform: translateX(100%);
+    background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.55), transparent);
+    animation: pars-shimmer 1.5s infinite;
+  }
+  .text-gradient-gold {
+    background: linear-gradient(90deg, var(--color-gold-300), var(--color-gold-500));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+}
+
+@keyframes pars-shimmer {
+  to {
+    transform: translateX(-100%);
+  }
+}

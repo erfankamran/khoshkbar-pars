@@ -1,0 +1,732 @@
+// ============================================================
+// پارس — اسکیمای دیتابیس (فاز ۴)
+// موتور: SQLite (تنها گزینه sandbox) — آماده مهاجرت به MySQL/Postgres
+//
+// قوانین کلیدی پروژه:
+// - پول همیشه عدد صحیح «تومان» (بدون اعشار) — پسوند *Toman
+// - SQLite از enum پشتیبانی ندارد → مقادیر وضعیت String + اعتبارسنجی zod
+//   در لایه سرویس (src/server/validators) — مقادیر مجاز در کامنت هر فیلد
+// - حذف Product هرگز سفارش تاریخی را نمی‌شکند (Restrict از سمت OrderItem)
+// - Snapshot قیمت و نام در OrderItem (بند ۱۳ مشخصات: قیمت لحظه ثبت سفارش)
+// ============================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ------------------------------------------------------------
+// کاربران و احراز هویت (فاز ۹)
+// ------------------------------------------------------------
+
+model User {
+  id          String   @id @default(cuid())
+  // شماره موبایل نرمال‌شده 09xxxxxxxxx — تنها شناسه ورود (بدون رمز، بخش ۱۴)
+  phone       String   @unique
+  // فاز پروفایل — تفکیک هویت کاربر از هویت فروشگاه:
+  // نام/نام‌خانوادگی شخصی؛ fullName برای خواننده‌های قدیمی هم‌زمان sync می‌شود
+  firstName   String?
+  lastName    String?
+  fullName    String?
+  email       String?
+  // تصویر پروفایل — آپلود از /api/user/profile/avatar → /api/media/...
+  avatarUrl   String?
+  // زمان تأیید شماره با OTP موفق — مبنای «شماره احرازشده»
+  phoneVerifiedAt DateTime?
+  // USER | PARTNER | ADMIN
+  role        String   @default("USER")
+  isActive    Boolean  @default(true)
+  // آخرین ورود برای لاگ امنیتی و تشخیص حساب غیرفعال
+  lastLoginAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  addresses      Address[]
+  orders         Order[]
+  favorites      Favorite[]
+  cart           Cart?
+  reviews        Review[]
+  sessions       Session[]
+  passkeys       PasskeyCredential[]
+  notificationPref NotificationPreference?
+  pushSubscriptions PushSubscription[]
+  notificationLogs  NotificationLog[]
+  notifications     Notification[]
+  partnerRequest    PartnerRequest?
+
+  @@index([isActive])
+}
+
+/// One current request per customer; admin audit logs retain review history.
+model PartnerRequest {
+  id           String   @id @default(cuid())
+  userId       String   @unique
+  status       String   @default("PENDING") // PENDING | APPROVED | REJECTED | REVOKED
+  businessName String
+  message      String?
+  reviewNote   String?
+  reviewedById String?
+  reviewedAt   DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([status, updatedAt])
+}
+
+model Address {
+  id           String   @id @default(cuid())
+  userId       String
+  title        String // مثلاً «خانه» یا «محل کار»
+  receiverName String
+  receiverPhone String
+  province     String
+  city         String
+  postalCode   String?
+  fullAddress  String
+  // مختصات اختیاری برای آینده (نقشه انتخاب آدرس)
+  lat          Float?
+  lng          Float?
+  isDefault    Boolean  @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+/// کد یک‌بارمصرف ورود — فاز ۹
+/// فقط هش کد ذخیره می‌شود (قانون امنیتی بخش ۱۵.۲)
+model OtpCode {
+  id       String   @id @default(cuid())
+  phone    String
+  codeHash String
+  // ۵ دقیقه از لحاظ امنیتی؛ در سرویس کنترل می‌شود
+  expiresAt DateTime
+  consumedAt DateTime?
+  // حداکثر ۵ تلاش برای هر کد
+  attempts Int      @default(0)
+  ip       String?
+
+  createdAt DateTime @default(now())
+
+  @@index([phone, createdAt])
+  @@index([phone, expiresAt])
+}
+
+/// نشست ورود — کوکی HttpOnly فقط شناسه خام دارد؛ اینجا هش آن
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  tokenHash String   @unique
+  userAgent String?
+  ip        String?
+  expiresAt DateTime
+  revokedAt DateTime?
+  // آخرین فعالیت نشست — در getSessionUser با throttle ۶۰ ثانیه به‌روز می‌شود
+  lastUsedAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+// ------------------------------------------------------------
+// Passkey / WebAuthn (فاز احراز هویت مدرن)
+// ------------------------------------------------------------
+
+/// چالش یک‌بارمصرف WebAuthn — در دیتابیس نگه داشته می‌شود تا بین
+/// routeهای جدا و فرآیندها مشترک باشد (حالت حافظه‌ای کافی نیست)
+model WebAuthnChallenge {
+  id         String   @id @default(cuid())
+  challenge  String   @unique
+  // ثبت Passkey: قفل به کاربر احرازشده؛ ورود: بدون قفل
+  userId     String?
+  expiresAt  DateTime
+  // مصرف هنگام verify — Replay دوم با همین challenge → یافت نمی‌شود
+  consumedAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([expiresAt])
+}
+
+/// کلید عمومی Passkey ثبت‌شده کاربر — استاندارد WebAuthn
+/// کلید خصوصی هرگز به سرور نمی‌آید؛ اطلاعات بیومتریک هرگز دریافت نمی‌شود
+model PasskeyCredential {
+  id        String @id @default(cuid())
+  userId    String
+  // شناسهٔ یکتا credential از مرورگر (base64url) — کلید جست‌وجوی ورود
+  credentialId String @unique
+  // کلید عمومی COSE — برای تأیید امضاها
+  publicKey  String
+  // شمارندهٔ امضا برای تشخیص کلون (Replay)
+  signCount  Int    @default(0)
+  // روش‌های انتقال ممکن: internal | hybrid | usb | nfc | ble (JSON آرایه)
+  transports String?
+  // نام دلخواه دستگاه — از user-agent استخراج می‌شود؛ بدون دادهٔ حساس
+  deviceName String?
+  // شناسهٔ ساخت‌کنندهٔ authenticator (فرمت استاندارد WebAuthn)
+  aaguid     String?
+  // وضعیت Backup استاندارد WebAuthn (قابلیت و وضعیت همگام‌سازی)
+  backupEligible Boolean @default(false)
+  backupState    Boolean @default(false)
+  // نشانهٔ Discoverable Credential (resident key) — ورود بدون شماره
+  discoverable Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  // آخرین ورود موفق با این کلید
+  lastUsedAt DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+// ------------------------------------------------------------
+// کاتالوگ فروشگاه (دسته‌بندی، محصول، واریانت، تصویر، نظرات)
+// ------------------------------------------------------------
+
+model Category {
+  id          String  @id @default(cuid())
+  slug        String  @unique // pistachio، almond، ...
+  title       String
+  description String?
+  imageUrl    String?
+  // کلید آیکون UI (نام lucide) تا فاز تصاویر واقعی کامل شود
+  icon        String?
+  // برای دسته‌های تودرتو در آینده (درخت دسته‌بندی)
+  parentId    String?
+  sortOrder   Int     @default(0)
+  isActive    Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  parent   Category?  @relation("CategoryTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children Category[] @relation("CategoryTree")
+
+  products Product[]
+
+  @@index([isActive, sortOrder])
+}
+
+model Product {
+  id         String  @id @default(cuid())
+  slug       String  @unique
+  title      String
+  categoryId String
+  // معرفی کوتاه زیر عنوان کارت و صفحه جزئیات
+  shortDescription String?
+  description      String?
+  // ویژگی‌ها به‌صورت JSON رشته‌ای: [{"key":"گرماژ","value":"درجه یک"}]
+  attributes       String?
+
+  // متن نرمال‌شده برای جستجو (فاز ۵) — title + توضیحات + ویژگی‌ها + دسته
+  // با normalizePersian (ی/ي، ک/ك، آ/ا، ارقام) یکسان‌سازی شده؛ فقط سمت سرور می‌نویسد
+  searchText       String  @default("")
+
+  // آماره‌ها — «پرفروش‌ها» بر اساس salesCount، «جدیدها» بر اساس createdAt
+  salesCount Int @default(0)
+  ratingSum  Int @default(0)
+  ratingCount Int @default(0)
+
+  // پیشنهاد دستی مدیر برای بخش «پیشنهاد پارس»
+  isSuggested Boolean @default(false)
+  isActive    Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  category Category        @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  images   ProductImage[]
+  variants ProductVariant[]
+  reviews  Review[]
+  favorites Favorite[]
+  cartItems CartItem[]
+  orderItems OrderItem[]
+
+  @@index([categoryId, isActive])
+  @@index([isActive, salesCount])
+  @@index([isActive, createdAt])
+  @@index([isSuggested, isActive])
+  @@index([isActive, updatedAt])
+}
+
+model ProductImage {
+  id        String @id @default(cuid())
+  productId String
+  url       String
+  alt       String?
+  sortOrder Int    @default(0)
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId, sortOrder])
+}
+
+/// واریانت وزنی — واحد خرید واقعی فروشگاه (بخش ۵.۳ مشخصات)
+model ProductVariant {
+  id           String  @id @default(cuid())
+  productId    String
+  // 250 | 500 | 750 | 1000 (گرم)
+  weightGrams  Int
+  // قیمت فروش فعلی (تومان) — منبع حقیقت قیمت
+  priceToman   Int
+  // Wholesale variants: weightGrams = minimum order weight; stock = available grams.
+  isWholesale Boolean @default(false)
+  pricePerKgToman Int?
+  // قیمت قبل از تخفیف (اختیاری) — تخفیف فقط وقتی معنا دارد که بزرگ‌تر از قیمت باشد
+  compareAtPriceToman Int?
+  sku          String?
+  stock        Int     @default(0)
+  isActive     Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  product Product    @relation(fields: [productId], references: [id], onDelete: Cascade)
+  cartItems CartItem[]
+  orderItems OrderItem[]
+
+  // هر وزن برای هر محصول یکتا
+  @@unique([productId, weightGrams, isWholesale])
+  @@index([productId, isActive])
+}
+
+model Review {
+  id        String   @id @default(cuid())
+  productId String
+  userId    String
+  // فقط خریدارِ سفارش تحویل‌شده بتواند ثبت کند (کنترل در سرویس)
+  orderId   String?
+  rating    Int // 1..5
+  comment   String?
+  isApproved Boolean @default(false)
+  // پاسخ رسمی فروشگاه به این نظر — فقط از پنل مدیریت (فاز پاسخ به نظرات)
+  // نمایش عمومی: زیر نظر تأییدشده با نشان «پاسخ فروشگاه»
+  adminReply   String?
+  adminReplyAt DateTime?
+  createdAt DateTime @default(now())
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([productId, isApproved])
+}
+
+// ------------------------------------------------------------
+// محتوای صفحه اصلی (بنر و استوری — بخش ۴.۲ و ۴.۳ مشخصات)
+// ------------------------------------------------------------
+
+model Banner {
+  id       String  @id @default(cuid())
+  title    String
+  subtitle String?
+  imageUrl String
+  // نحو مقصد: view:"category" + params:{slug:"pistachio"}
+  linkView   String? // viewname روتر: category | product | search | none
+  linkParams String? // JSON رشته‌ای مثل {"slug":"pistachio"}
+  sortOrder Int     @default(0)
+  isActive  Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([isActive, sortOrder])
+}
+
+/// استوری تعاملی — آیتم‌های داخل یک استوری در همین جدول با storyGroup گروه می‌شوند
+model Story {
+  id     String  @id @default(cuid())
+  // گروه استوری (هر دایره استوری یک گروه است)
+  groupKey  String
+  groupTitle String
+  thumbUrl  String
+  mediaType String // image | video
+  mediaUrl  String
+  caption   String?
+  linkView   String?
+  linkParams String?
+  // انقضای اختیاری استوری (تبلیغ فصلی)
+  expiresAt DateTime?
+  sortOrder Int     @default(0)
+  isActive  Boolean @default(true)
+
+  createdAt DateTime @default(now())
+
+  @@index([isActive, groupKey, sortOrder])
+}
+
+// ------------------------------------------------------------
+// علاقه‌مندی و سبد خرید (فاز ۷ و ۸)
+// ------------------------------------------------------------
+
+model Favorite {
+  id        String   @id @default(cuid())
+  userId    String
+  productId String
+  createdAt DateTime @default(now())
+
+  // هر کاربر هر محصول را حداکثر یک‌بار
+  @@unique([userId, productId])
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+}
+
+model Cart {
+  id     String  @id @default(cuid())
+  // پس از ورود OTP (فاز ۹) — تا آن زمان null
+  userId String? @unique
+  // سبد مهمان — شناسه دستگاه در کوکی HttpOnly (پارس‌دووِیس)؛ ادغام با سبد کاربر در فاز ۹
+  deviceId String? @unique
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user  User?      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items CartItem[]
+}
+
+model CartItem {
+  id        String @id @default(cuid())
+  cartId    String
+  productId String
+  variantId String
+  quantity  Int    @default(1)
+  requestedWeightGrams Int?
+  // ترتیب پایدار نمایش ردیف‌ها (به ترتیب افزودن)
+  createdAt DateTime @default(now())
+
+  @@unique([cartId, variantId])
+
+  cart    Cart           @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  product Product        @relation(fields: [productId], references: [id], onDelete: Cascade)
+  variant ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+
+}
+
+// ------------------------------------------------------------
+// سفارش — Snapshot کامل قیمت در لحظه ثبت (بند امنیتی ۱۶)
+// ------------------------------------------------------------
+
+model Order {
+  id   String @id @default(cuid())
+  // کد خوانا برای مشتری: PARS-14040315-XXXX
+  code String @unique
+  userId String
+
+  // PENDING_PAYMENT | PAID | PROCESSING | SHIPPED | DELIVERED | CANCELED
+  status String @default("PENDING_PAYMENT")
+
+  // مبالغ (تومان) — محاسبه نهایی فقط در orderService سمت سرور
+  subtotalToman Int
+  discountToman Int      @default(0)
+  deliveryToman Int      @default(0)
+  totalToman    Int
+
+  discountCodeId String?
+  discountCode   String?
+  // Snapshot کامل آدرس در لحظه ثبت (JSON رشته‌ای)
+  addressSnapshot String
+
+  // پرداخت شبیه‌سازی‌شده در sandbox — درج برچسب «تستی» در UI
+  paymentMethod  String? // ONLINE_GATEWAY (تستی) | COD
+  paymentStatus  String  @default("UNPAID") // UNPAID | PAID | FAILED | REFUNDED
+  paidAt         DateTime?
+  paymentRef     String?
+  // شناسه تراکنش درگاه (زیبال trackId) — برای بررسی/ری-وریفای (فاز ۱۶)
+  paymentTrackId String?
+
+  // روش ارسال پستی — Snapshot نام و زمان تحویل در لحظه ثبت (فاز ۱۵)
+  shippingMethodName String?
+  shippingMethodEta  String?
+  // کد رهگیری پست پس از ارسال
+  trackingCode String?
+  customerNote String?
+  // یادداشت داخلی مدیر
+  adminNote    String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+  items OrderItem[]
+
+  @@index([userId, createdAt])
+  @@index([status, createdAt])
+}
+
+model OrderItem {
+  id       String @id @default(cuid())
+  orderId  String
+  productId String
+  variantId String
+
+  // —— Snapshot های الزامی (حتی اگر محصول بعداً حذف شود، سفارش معتبر می‌ماند)
+  productTitle  String
+  weightGrams   Int
+  unitPriceToman Int
+  isWholesale   Boolean @default(false)
+  pricePerKgToman Int?
+  compareAtPriceToman Int?
+  quantity      Int
+  lineTotalToman Int
+
+  order   Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product        @relation(fields: [productId], references: [id], onDelete: Restrict)
+  variant ProductVariant @relation(fields: [variantId], references: [id], onDelete: Restrict)
+
+  @@index([orderId])
+  @@index([productId])
+}
+
+model DiscountCode {
+  id   String @id @default(cuid())
+  code String @unique
+  // PERCENT | FIXED
+  type  String
+  // درصد (1..100) یا مبلغ ثابت تومان
+  value Int
+  minSubtotalToman Int?
+  maxDiscountToman Int?
+  usageLimit Int?
+  usedCount  Int @default(0)
+  startsAt  DateTime?
+  expiresAt DateTime?
+  isActive  Boolean @default(true)
+
+  createdAt DateTime @default(now())
+
+  @@index([isActive, expiresAt])
+}
+
+// ------------------------------------------------------------
+// اعلان‌ها (فاز ۱۰) — رضایت‌محور
+// ------------------------------------------------------------
+
+model NotificationPreference {
+  id     String @id @default(cuid())
+  userId String @unique
+  // رضایت کلی برای دریافت Push (بخش ۱۱: کاملاً اختیاری)
+  pushEnabled   Boolean @default(false)
+  orderUpdates  Boolean @default(true)
+  promotions    Boolean @default(false)
+  newProducts   Boolean @default(false)
+
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model PushSubscription {
+  id       String   @id @default(cuid())
+  userId   String?
+  endpoint String   @unique
+  p256dh   String
+  auth     String
+  // دستگاه/مرورگر برای مدیریت اشتراک‌ها
+  userAgent String?
+  isActive Boolean @default(true)
+  createdAt DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+}
+
+/// مرکز اعلان‌ها (زنگوله) — یک ردیف به‌ازای هر گیرنده (فن‌اوت برای همهٔ مدیرها)
+/// - تفاوت با NotificationLog: اینجا «صندوق داخل‌اپ» است؛ وضعیت خوانده‌شدن دارد
+/// - رویدادها: CART_NEW | ORDER_NEW | ORDER_STATUS | PAYMENT | BROADCAST | SYSTEM
+model Notification {
+  id        String    @id @default(cuid())
+  userId    String
+  type      String
+  title     String
+  body      String
+  // مقصد داخل‌اپ: فروشگاه → مسیر نما (مثل /?o=PARS-…)؛ ادمین → مسیر پنل (/admin/…)
+  url       String?
+  // خوانده‌شده — دایرهٔ قرمز زنگوله = ردیف‌های با readAt خالی
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([userId, readAt])
+}
+
+/// صف لاگ اعلان‌های ارسالی (تحویل و خطا) — فاز ۱۰
+model NotificationLog {
+  id     String   @id @default(cuid())
+  userId String?
+  title  String
+  body   String
+  // JSON payload دلخواه (مثلاً مسیر مقصد در اپ)
+  data   String?
+  // QUEUED | SENT | FAILED | SKIPPED
+  status String   @default("QUEUED")
+  sentAt DateTime?
+  error  String?
+
+  createdAt DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([status])
+}
+
+// ------------------------------------------------------------
+// تنظیمات فروشگاه و لاگ امنیتی (فاز ۱۱ و ۱۳)
+// ------------------------------------------------------------
+
+/// تنظیمات متغیر قابل کنترل از پنل مدیریت (آستانه ارسال رایگان و ...)
+model Setting {
+  key   String @id
+  // مقدار به‌صورت JSON رشته‌ای (عدد، رشته یا شیء)
+  value String
+  description String?
+
+  updatedAt DateTime @updatedAt
+}
+
+// ------------------------------------------------------------
+// محتوای مستقل فروشگاه (فاز ۳) — تصمیم معماری تأییدشده:
+// داده‌های تکرارشونده با چرخه مدیریت مستقل در جداول خودشان می‌مانند
+// (هرگز در Setting نمی‌روند)؛ اطلاعات برند و تم در Setting (فاز ۲)
+// ------------------------------------------------------------
+
+/// پرسش‌های متداول — پاسخ‌های رسمی فروشگاه به سؤالات پرتکرار
+model FaqItem {
+  id       String  @id @default(cuid())
+  question String
+  answer   String
+  sortOrder Int    @default(0)
+  isActive Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([isActive, sortOrder])
+}
+
+/// شماره‌های تماس — چند شماره با نقش مشخص (پشتیبانی، سفارش تلفنی، واتساپ، ...)
+/// توجه: supportPhone در Setting تنها «شماره پیش‌فرض» است؛ فهرست کامل تماس اینجاست
+model ContactNumber {
+  id        String  @id @default(cuid())
+  label     String
+  phone     String
+  sortOrder Int     @default(0)
+  isActive  Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([isActive, sortOrder])
+}
+
+/// نمادهای اعتماد — اینماد، ساماندهی، نشان‌های صنفی؛ تصویر از /api/media آپلود می‌شود
+model TrustBadge {
+  id        String  @id @default(cuid())
+  title     String
+  imageUrl  String
+  linkUrl   String?
+  sortOrder Int     @default(0)
+  isActive  Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([isActive, sortOrder])
+}
+
+/// لینک‌های فوتر — فهرست لینک‌های دسترسی سریع و صفحات راهنما
+/// (متن معرفی فروشگاه از brand.description در Setting می‌آید — بدون تکرار)
+model FooterLink {
+  id        String  @id @default(cuid())
+  title     String
+  url       String
+  sortOrder Int     @default(0)
+  isActive  Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([isActive, sortOrder])
+}
+
+/// صفحات اختصاصی فروشگاه (درخواست کاربر) — قوانین و شرایط، حریم خصوصی، راهنما و ...
+/// - متن ساده: پاراگراف‌ها با خط خالی جدا می‌شوند؛ رندر سمت کاربر در نمای page
+/// - slug در آدرس /p/<slug> استفاده می‌شود (مثلاً /p/terms)
+/// - showInFooter=true → چیپ خودکار در فوتر فروشگاه
+model ContentPage {
+  id           String   @id @default(cuid())
+  slug         String   @unique // حروف انگلیسی کوچک، عدد و خط تیره
+  title        String   // عنوان نمایشی (فارسی)
+  body         String   // متن کامل صفحه (حالت مارک‌داون)
+  // صفحه‌ساز با تمپلیت‌های آماده (درخواست کاربر):
+  // editorMode = "markdown" → رندر با پارسر مارک‌داون
+  // editorMode = "blocks"   → رندر با رندرکنندهٔ بلوک‌ها (کارت/آیکون/نوشته/اسلایدر/گالری)
+  editorMode   String   @default("markdown")
+  blocks       String?  // JSON آرایهٔ بلوک‌ها — فقط در حالت blocks
+  isActive     Boolean  @default(true)
+  showInFooter Boolean  @default(true)
+  sortOrder    Int      @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([isActive, sortOrder])
+}
+
+/// نوشته‌های وبلاگ (درخواست کاربر) — جایگزین علاقه‌مندی در منوی موبایل + ورودی سئو
+/// - محتوا مارک‌داون امن (بدون HTML خام) — رندر با MarkdownContent
+/// - metaTitle/metaDescription برای سئو؛ خالی → fallback از title/excerpt
+/// - فقط نوشته‌های isPublished در /blog و sitemap و RSS می‌آیند
+model Post {
+  id              String    @id @default(cuid())
+  slug            String    @unique // حروف انگلیسی کوچک، عدد و خط تیره — آدرس /blog/<slug>
+  title           String
+  excerpt         String?   // خلاصهٔ کوتاه (کارت لیست + fallback سئو)
+  content         String    // متن کامل مارک‌داون
+  coverUrl        String?   // تصویر شاخص
+  metaTitle       String?   // سئو — حداکثر ۶۰ نویسه
+  metaDescription String?   // سئو — حداکثر ۱۶۰ نویسه
+  tags            String?   // برچسب‌ها با ویرگول جدا می‌شوند: «آجیل,سلامتی»
+  isPublished     Boolean   @default(false)
+  publishedAt     DateTime? // اولین بار انتشار — نمایش در لیست و JSON-LD
+  viewCount       Int       @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([isPublished, publishedAt])
+}
+
+/// لاگ رویدادهای امنیتی: تلاش OTP، محدودیت نرخ، ورود مدیر، خطای دسترسی (بخش ۱۵.۶)
+model SecurityLog {
+  id     String   @id @default(cuid())
+  // OTP_REQUEST | OTP_VERIFY_FAIL | OTP_RATE_LIMIT | LOGIN | LOGIN_FAIL |
+  // ADMIN_ACTION | FORBIDDEN | IDOR_ATTEMPT
+  event  String
+  userId String?
+  phone  String?
+  ip     String?
+  meta   String? // JSON جزئیات
+  createdAt DateTime @default(now())
+
+  @@index([event, createdAt])
+  @@index([phone, createdAt])
+}

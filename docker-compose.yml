@@ -1,0 +1,72 @@
+# ============================================================
+# فروشگاه پارس — اجرای آسان با Docker Compose
+#
+#   ساخت و اجرا:   docker compose up -d --build
+#   مشاهده لاگ:    docker compose logs -f app
+#   توقف:          docker compose down
+#   وضعیت سلامت:   docker compose ps
+# ============================================================
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        # باید با OTP_MASTER_CODE پایین یکی باشد — بعد از تغییر، rebuild لازم است
+        NEXT_PUBLIC_OTP_MASTER_CODE: "123456"
+        # حالت تست: کد مادر و نمایش devCode فعال می‌شود (مثل پیش‌نمایش سندباکس)
+        # روی سرور تولیدی واقعی، هر دو را false کنید و rebuild بگیرید
+        NEXT_PUBLIC_DEV_MODE: "true"
+    image: pars-shop:latest
+    container_name: pars-shop
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+      # دیتابیس SQLite داخل volume — پس از اولین اجرا، داده‌ها ماندگارند
+      DATABASE_URL: file:/app/data/pars.db
+      MEDIA_STORAGE_DIR: /app/storage/media
+      NODE_OPTIONS: --max-old-space-size=1024
+
+      # —— ورود با کد master (برای استقرار واقعی، کد را عوض کنید و
+      #    NEXT_PUBLIC_OTP_MASTER_CODE را در build args هم به‌روز کنید) ——
+      OTP_MASTER_CODE: "123456"
+      OTP_DEV_CODE_EXPOSE: "1"
+      NEXT_PUBLIC_DEV_MODE: "true"
+
+      # —— نوتیفیکیشن وب (Web Push) — کلیدهای فعلی تستی‌اند؛
+      #    برای تولید با «npx web-push generate-vapid-keys» کلید جدید بسازید ——
+      VAPID_PUBLIC_KEY: "BCI5QykCTByK7mHwsCvXlQUEhN9svX_xgEvj8LsLbEBWWXtbINLzbTd3Ou9kWDSXxjtxcl1g-TZl2dSSdBfBSmI"
+      VAPID_PRIVATE_KEY: "aN7ed0fr51Dl5RQUIZsdvmuA9CkJYQoRvlT7Y3yWRd0"
+      VAPID_SUBJECT: "mailto:support@pars-shop.ir"
+
+      # —— لینک‌های بیرونی فوتر (درخواست کاربر) — خالی = نمایش داده نمی‌شود؛
+      #    فقط http(s) معتبر است؛ تغییر با ری‌استارت کانتینر اعمال می‌شود ——
+      #    اینماد: معمولاً لینک نشان با id و Code (لینک + کد در یک URL)
+      SHOP_ENAMAD_URL: ""
+      SHOP_SAMANDAHI_URL: ""
+      SHOP_TOROB_URL: ""
+      SHOP_EMALLS_URL: ""
+
+      # —— سرویس پیامک از env (درخواست کاربر) — هر چهار مقدار کامل →
+      #    مقدم بر تنظیمات پنل ادمین؛ خالی = پنل ملاک است ——
+      SMS_PROVIDER: ""
+      SMS_USERNAME: ""
+      SMS_PASSWORD: ""
+      SMS_SENDER: ""
+    volumes:
+      # دیتابیس — بار اول از snapshot داخل ایمیج بذر می‌شود
+      - db_data:/app/data
+      # رسانه‌های آپلودی (بنر، تصاویر، آواتارها) — بار اول از ایمیج بذر می‌شود
+      - media_data:/app/storage/media
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 90s
+
+volumes:
+  db_data:
+  media_data:

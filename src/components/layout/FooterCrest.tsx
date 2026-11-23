@@ -1,0 +1,118 @@
+/**
+ * وکتور لبهٔ بالایی فوتر — محصولات پارس در ظروف اصیل ایرانی (درخواست کاربر)
+ *
+ * ترکیب متقارن از راست به چپ: بته‌جقه ← بشقاب زعفران ← کاسهٔ مسی قلم‌زنی
+ * با تل پسته ← کاسهٔ فیروزه‌ای لعاب‌دار با کشمش ← بته‌جقه + مغزهای پراکنده
+ *
+ * جای‌گذاری: روی لبهٔ بالایی فوتر (نیمه بالایی روی بخش قبل، نیمه پایینی در
+ * پارچهٔ تیرهٔ برند) با z-index بالاتر از محتوای اطراف — pointer-events-none
+ * تا هیچ تعاملی را نپوشاند. ترسیم دستی SVG — بدون تصویر بیت‌مپی.
+ */
+export function FooterCrest() {
+  return (
+    <div
+      aria-hidden
+      className="pointer-events-none absolute left-1/2 top-0 z-20 w-[min(560px,88%)] -translate-x-1/2 -translate-y-1/2"
+    >
+      <svg
+        viewBox="0 0 560 120"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+        className="block h-auto w-full"
+      >
+        {/* بته‌جقه‌های دو سر — قرینه */}
+        <g stroke="#d9b352" strokeWidth="2" fill="none" opacity="0.65" strokeLinecap="round">
+          <path d="M30 98 C 24 80 38 66 54 72 C 66 77 63 92 52 93 C 58 84 50 77 44 82" />
+          <path d="M530 98 C 536 80 522 66 506 72 C 494 77 497 92 508 93 C 502 84 510 77 516 82" />
+        </g>
+
+        {/* کاسهٔ فیروزه‌ای لعاب‌دار با کشمش (چپ) */}
+        <g>
+          <path d="M92 74 C 95 96 113 103 130 103 C 147 103 165 96 168 74 Z" fill="#3ba8a0" />
+          <ellipse cx="130" cy="74" rx="38" ry="6.5" fill="#57c2ba" />
+          <circle cx="114" cy="89" r="2.6" fill="#f0e7d8" opacity="0.85" />
+          <circle cx="130" cy="90" r="2.6" fill="#f0e7d8" opacity="0.85" />
+          <circle cx="146" cy="89" r="2.6" fill="#f0e7d8" opacity="0.85" />
+          <g fill="#7a3030">
+            <circle cx="110" cy="67" r="6.5" />
+            <circle cx="122" cy="61" r="6.5" />
+            <circle cx="136" cy="64" r="6.5" />
+            <circle cx="148" cy="68" r="6.5" />
+            <circle cx="117" cy="71" r="6.5" />
+            <circle cx="141" cy="71" r="6.5" />
+            <circle cx="129" cy="70" r="6.5" />
+          </g>
+          <circle cx="120" cy="59" r="1.8" fill="#9c4a4a" />
+          <circle cx="134" cy="62" r="1.8" fill="#9c4a4a" />
+        </g>
+
+        {/* کاسهٔ مسی قلم‌زنی با تل پسته (مرکز) */}
+        <g>
+          <path d="M212 70 C 216 97 248 105 280 105 C 312 105 344 97 348 70 Z" fill="#b4763c" />
+          <path d="M218 84 L 342 84" stroke="#8a5527" strokeWidth="1.6" opacity="0.7" />
+          <path d="M226 94 L 334 94" stroke="#8a5527" strokeWidth="1.6" opacity="0.55" />
+          <g fill="#f0e7d8" opacity="0.8">
+            <circle cx="248" cy="89" r="1.8" />
+            <circle cx="264" cy="89" r="1.8" />
+            <circle cx="280" cy="89" r="1.8" />
+            <circle cx="296" cy="89" r="1.8" />
+            <circle cx="312" cy="89" r="1.8" />
+          </g>
+          <ellipse cx="280" cy="70" rx="68" ry="8" fill="#d99a5b" />
+          {/* تل پسته */}
+          <g fill="#7fae4e">
+            <ellipse cx="250" cy="62" rx="10" ry="7.5" />
+            <ellipse cx="268" cy="56" rx="10" ry="7.5" />
+            <ellipse cx="287" cy="54" rx="10" ry="7.5" />
+            <ellipse cx="305" cy="58" rx="10" ry="7.5" />
+            <ellipse cx="262" cy="66" rx="10" ry="7.5" />
+            <ellipse cx="284" cy="65" rx="10" ry="7.5" />
+            <ellipse cx="303" cy="65" rx="10" ry="7.5" />
+            <ellipse cx="273" cy="61" rx="10" ry="7.5" />
+          </g>
+          {/* شکاف کرم‌رنگ پسته‌ها */}
+          <g fill="#efe3c8">
+            <ellipse cx="250" cy="62" rx="1.8" ry="4" />
+            <ellipse cx="268" cy="56" rx="1.8" ry="4" />
+            <ellipse cx="287" cy="54" rx="1.8" ry="4" />
+            <ellipse cx="305" cy="58" rx="1.8" ry="4" />
+            <ellipse cx="273" cy="61" rx="1.8" ry="4" />
+          </g>
+        </g>
+
+        {/* بشقاب زعفران (راست) */}
+        <g>
+          <path d="M392 78 C 396 94 410 99 428 99 C 446 99 460 94 464 78 Z" fill="#d9b352" />
+          <ellipse cx="428" cy="78" rx="36" ry="6" fill="#e8c878" />
+          <g stroke="#b83232" strokeWidth="2.4" strokeLinecap="round">
+            <path d="M406 74 L 410 66" />
+            <path d="M418 72 L 422 63" />
+            <path d="M431 73 L 435 64" />
+            <path d="M444 74 L 448 67" />
+            <path d="M412 71 L 420 68" />
+            <path d="M436 71 L 444 69" />
+          </g>
+          {/* نخ‌های ریخته کنار بشقاب */}
+          <g stroke="#b83232" strokeWidth="2" strokeLinecap="round" opacity="0.9">
+            <path d="M470 92 L 482 90" />
+            <path d="M474 97 L 488 96" />
+          </g>
+        </g>
+
+        {/* مغزهای پراکنده روی خط لبه */}
+        <g>
+          <ellipse cx="190" cy="100" rx="8" ry="5" fill="#d8b07a" transform="rotate(-18 190 100)" />
+          <ellipse cx="372" cy="100" rx="8" ry="5" fill="#d8b07a" transform="rotate(14 372 100)" />
+          <circle cx="352" cy="99" r="8.5" fill="#8a5a33" />
+          <path
+            d="M346 99 q3 -4.5 6 0 q3 4.5 6 0"
+            stroke="#6e4526"
+            strokeWidth="1.8"
+            fill="none"
+            strokeLinecap="round"
+          />
+        </g>
+      </svg>
+    </div>
+  );
+}

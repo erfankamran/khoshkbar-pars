@@ -1,0 +1,7 @@
+# پایان‌خط لینوکسی برای فایل‌های داکر — جلوگیری از خرابی CRLF هنگام checkout روی ویندوز
+# (اسکریپت شل با CR breaker یعنی خطای bin/sh^M در کانتینر)
+Dockerfile text eol=lf
+.dockerignore text eol=lf
+docker-compose.yml text eol=lf
+docker-entrypoint.sh text eol=lf
+*.sh text eol=lf
