@@ -153,11 +153,12 @@ bun run start        # اجرای نسخه تولید (node .next/standalone/ser
 
 در محیط sandbox پلتفرم، `.zscripts/dev.sh` همین زنجیره (install → db:push → dev → health check روی `/`) را خودکار اجرا می‌کند. **پیش‌نمایش بیرونی فقط از دامنه‌های `*.space-z.ai` مجاز است** (`allowedDevOrigins` در `next.config.ts` — حذفش یعنی صفحه سفید در پیش‌نمایش).
 
-## ۱۰) استقرار (سه مسیر)
+## ۱۰) استقرار (چهار مسیر)
 
 1. **پلتفرم سندباکس (پیش‌فرض توسعه):** `.zscripts/` + گیت‌وی Caddy روی پورت ۸۱؛ روت‌ها به `localhost:3000` می‌روند؛ سرویس‌های جانبی با کوئری `?XTransformPort=<port>`.
 2. **Docker:** `Dockerfile` (بیلد standalone + کپی static/public) و `docker-compose.yml`؛ `bun run docker:up`.
-3. **cPanel (هاست اشتراکی):** `deploy/cpanel/server.js` + مستندات `DEPLOY.md` و `DOCKER.md`.
+3. **cPanel (هاست اشتراکی) — دستی:** `deploy/cpanel/server.js` + مستندات `DEPLOY.md` و `DOCKER.md`.
+4. **cPanel وب‌دانا — خودکار با GitHub Actions (مسیر تولید فعلی):** `.github/workflows/main.yml` — روی هر push به `main`، بیلد standalone با bun می‌گیرد (`NEXT_PUBLIC_DEV_MODE=false`، `NEXT_PUBLIC_SITE_URL=https://pars.webdana.ir`) و فقط باندل آماده‌ی اجرا را آپلود می‌کند: `server.js` (راه‌انداز Passenger) + `.next/standalone/` + `prisma/schema.prisma` (برای `db push` دستی روی سرور) + `tmp/restart.txt` با محتوای متغیر = restart خودکار Passenger. اتصال: FTPS صریح، پورت ۲۱، `ftp.webdana.ir`. سِکِرت الزامی ریپو: `ftp_password` (پسورد هرگز در فایل ورک‌فلو کامیت نمی‌شود). دیتابیس، پوشه `uploads/` و `.env` سرور هرگز آپلود یا حذف نمی‌شوند (`dangerous-clean-slate` خاموش)؛ اگر Application root در cPanel همان ریشه FTP نیست، `server-dir` را در ورک‌فلو ست کنید. تغییر اسکیمای DB همچنان دستی است (cPanel terminal → `npx prisma db push`).
 
 ## ۱۱) نکات و دام‌های شناخته‌شده (Gotchas)
 
